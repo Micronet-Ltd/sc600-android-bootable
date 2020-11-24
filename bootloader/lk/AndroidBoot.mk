@@ -147,6 +147,8 @@ emmc_appsbootldr_clean:
 
 $(EMMC_BOOTLOADER_OUT):
 	mkdir -p $(EMMC_BOOTLOADER_OUT)
+	mkdir -p $(EMMC_BOOTLOADER_OUT)/build-msm8953/platform/msm_shared
+	cp bootable/bootloader/lk/platform/msm_shared/quec_sdhci.obj $(EMMC_BOOTLOADER_OUT)/build-msm8953/platform/msm_shared/quec_sdhci.o
 
 # Top level for NAND variant targets
 $(TARGET_NAND_BOOTLOADER): appsbootldr_clean | $(NAND_BOOTLOADER_OUT)

@@ -713,6 +713,12 @@ static EFI_STATUS DisplayVerifiedBootScreen(bootinfo *Info)
 			if (ffbm_mode_string[0] != '\0' && !target_build_variant_user()) {
 				dprintf(DEBUG, "Device will boot into FFBM mode\n");
 			} else {
+                               if(!target_build_variant_user()){
+                                       //if userdebug,not show DISPLAY_MENU_ORANGE
+                                       dprintf(DEBUG, "userdebug Device will not DISPLAY_MENU_ORANGE\n");
+                                       break;
+                               }
+
 				display_bootverify_menu(DISPLAY_MENU_ORANGE);
 				if (Status == EFI_SUCCESS) {
 					wait_for_users_action();

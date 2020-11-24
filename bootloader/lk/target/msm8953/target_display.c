@@ -35,6 +35,7 @@
 #include <msm_panel.h>
 #include <mipi_dsi.h>
 #include <pm8x41.h>
+#include <pm8x41_hw.h>
 #include <pm8x41_wled.h>
 #include <qpnp_wled.h>
 #include <qpnp_lcdb.h>
@@ -83,6 +84,45 @@ static struct gpio_pin enable_gpio = {
 #define GPIO_STATE_HIGH 2
 #define RESET_GPIO_SEQ_LEN 3
 #define PMIC_WLED_SLAVE_ID 3
+#define PMI632_PWM4_BASE 0x3B600
+#define PMI632_GPIO6_BASE 0x2C500
+static void pm8953_gpio4_ctrl(void)
+{
+	struct pm8x41_gpio blgpio_param = {
+		.direction = PM_GPIO_DIR_OUT,
+		.output_buffer = PM_GPIO_OUT_CMOS,
+		.out_strength = PM_GPIO_OUT_DRIVE_MED,
+		.vin_sel =  3,
+	};
+	pm8x41_gpio_config(4, &blgpio_param);
+	pm8x41_gpio_set(4, 0);
+	mdelay(10);
+	pm8x41_gpio_set(4, 1);
+	mdelay(20);
+}
+static void pmi632_gpio6_pwm4_ctrl(void)
+{
+	/* Select the mode */
+	REG_WRITE(PMI632_GPIO6_BASE + GPIO_MODE_CTL, 0x01);
+	/* Select the VIN */
+	REG_WRITE(PMI632_GPIO6_BASE + GPIO_DIG_VIN_CTL, 0x00);
+	/* Set the right pull */
+	REG_WRITE(PMI632_GPIO6_BASE + GPIO_DIG_PULL_CTL, 0x05);
+	/* Output source sel and output invert */
+	REG_WRITE(PMI632_GPIO6_BASE + GPIO_DIG_OUT_SRC_CTL, 0x02);
+	/* Set OUTPUT TYPE*/
+	REG_WRITE(PMI632_GPIO6_BASE + GPIO_DIG_OUT_CTL, 0x03);
+	/* Enable the GPIO */
+	REG_WRITE(PMI632_GPIO6_BASE + GPIO_EN_CTL, 0x80);
+
+	pm8x41_reg_write(PMI632_PWM4_BASE + 0x41,0x07);
+	pm8x41_reg_write(PMI632_PWM4_BASE + 0x42,0x02);
+	pm8x41_reg_write(PMI632_PWM4_BASE + 0x44,0xAA);
+	pm8x41_reg_write(PMI632_PWM4_BASE + 0x45,0x00);
+	pm8x41_reg_write(PMI632_PWM4_BASE + 0x46,0x80);//PWM enable
+	pm8x41_reg_write(PMI632_PWM4_BASE + 0x47,0x01);
+
+}
 
 static uint32_t dsi_pll_lock_status(uint32_t pll_base, uint32_t off,
 	uint32_t bit)
@@ -137,12 +177,45 @@ static int wled_backlight_ctrl(uint8_t enable)
 	return NO_ERROR;
 }
 
+static int pwm_backlight_ctrl_mpp4(uint8_t enable)
+{
+    struct pm8x41_mpp mpp;
+    int rc;
+
+    mpp.base = PM8x41_MMP4_BASE;
+    mpp.vin = MPP_VIN3;
+
+    if(enable) {
+        pm_pwm_enable(false);
+        rc = pm_pwm_config(PWM_DUTY_US, PWM_PERIOD_US); //配置pwm的频率和占空比
+        if(rc < 0)
+            mpp.mode = MPP_HIGH;
+        else {
+            mpp.mode = MPP_DTEST2; //选用dtest2
+            pm_pwm_enable(true);
+        }
+
+        pm8x41_config_output_mpp(&mpp); //把mpp4配置成数字输出模式
+        pm8x41_enable_mpp(&mpp, MPP_ENABLE);
+        pm8x41_reg_write(0x1BCD0, 0xA5);
+        pm8x41_reg_write(0x1BCE3, 0x02);//选用dtest2
+    } else {
+        pm_pwm_enable(false);
+        pm8x41_enable_mpp(&mpp, MPP_DISABLE);
+    }
+
+    mdelay(20);
+    return 0;
+}
+
 static int pwm_backlight_ctrl(uint8_t enable)
 {
 	if(enable) {
+		pm8953_gpio4_ctrl();
 		pm_pwm_enable(false);
 		pm_pwm_config(PWM_DUTY_US, PWM_PERIOD_US);
 		pm_pwm_enable(true);
+		pmi632_gpio6_pwm4_ctrl();
 	} else {
 		pm_pwm_enable(false);
 	}
@@ -160,7 +233,8 @@ int target_backlight_ctrl(struct backlight *bl, uint8_t enable)
 	if(target_get_pmic() == PMIC_IS_PMI632) {
 		ret = pwm_backlight_ctrl(enable);
 	} else {
-		ret = wled_backlight_ctrl(enable);
+		ret = pwm_backlight_ctrl_mpp4(enable);
+		//ret = wled_backlight_ctrl(enable);
 	}
 	return ret;
 }

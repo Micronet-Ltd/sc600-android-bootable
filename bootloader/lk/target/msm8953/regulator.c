@@ -103,6 +103,72 @@ static uint32_t ldo17[][11]=
 	},
 };
 
+static uint32_t ldo23[][11]=
+{
+    {
+        LDOA_RES_TYPE, 23,
+        KEY_SOFTWARE_ENABLE, 4, GENERIC_DISABLE,
+        KEY_MICRO_VOLT, 4, 0,
+        KEY_CURRENT, 4, 0,
+    },
+
+    {
+        LDOA_RES_TYPE, 23,
+        KEY_SOFTWARE_ENABLE, 4, GENERIC_ENABLE,
+        KEY_MICRO_VOLT, 4, 1200000,
+        KEY_CURRENT, 4, 100,
+    },
+};
+
+static uint32_t ldo22[][11]=
+{
+    {
+        LDOA_RES_TYPE, 22,
+        KEY_SOFTWARE_ENABLE, 4, GENERIC_DISABLE,
+        KEY_MICRO_VOLT, 4, 0,
+        KEY_CURRENT, 4, 0,
+    },
+
+    {
+        LDOA_RES_TYPE, 22,
+        KEY_SOFTWARE_ENABLE, 4, GENERIC_ENABLE,
+        KEY_MICRO_VOLT, 4, 2800000,
+        KEY_CURRENT, 4, 100,
+    },
+};
+
+static uint32_t ldo10[][11]=
+{
+    {
+        LDOA_RES_TYPE, 10,
+        KEY_SOFTWARE_ENABLE, 4, GENERIC_DISABLE,
+        KEY_MICRO_VOLT, 4, 0,
+        KEY_CURRENT, 4, 0,
+    },
+    {
+        LDOA_RES_TYPE, 10,
+        KEY_SOFTWARE_ENABLE, 4, GENERIC_ENABLE,
+        KEY_MICRO_VOLT, 4, 2800000,
+        KEY_CURRENT, 4, 100,
+    },
+};
+
+static uint32_t ldo2[][11]=
+{
+    {
+        LDOA_RES_TYPE, 2,
+        KEY_SOFTWARE_ENABLE, 4, GENERIC_DISABLE,
+        KEY_MICRO_VOLT, 4, 0,
+        KEY_CURRENT, 4, 0,
+    },
+
+    {
+        LDOA_RES_TYPE, 2,
+        KEY_SOFTWARE_ENABLE, 4, GENERIC_ENABLE,
+        KEY_MICRO_VOLT, 4, 1200000,
+        KEY_CURRENT, 4, 100,
+    },
+};
 void regulator_enable(uint32_t enable)
 {
 	if (enable & REG_LDO3)
@@ -116,6 +182,17 @@ void regulator_enable(uint32_t enable)
 
 	if (enable & REG_SMPS3)
 		rpm_send_data(&smps3[GENERIC_ENABLE][0], 36, RPM_REQUEST_TYPE);
+    if (enable & REG_LDO2)
+        rpm_send_data(&ldo2[GENERIC_ENABLE][0], 36, RPM_REQUEST_TYPE);
+
+    if (enable & REG_LDO22)
+        rpm_send_data(&ldo22[GENERIC_ENABLE][0], 36, RPM_REQUEST_TYPE);
+
+    if (enable & REG_LDO23)
+        rpm_send_data(&ldo23[GENERIC_ENABLE][0], 36, RPM_REQUEST_TYPE);
+
+    if (enable & REG_LDO10)
+        rpm_send_data(&ldo10[GENERIC_ENABLE][0], 36, RPM_REQUEST_TYPE);
 }
 
 void regulator_disable(uint32_t enable)
@@ -131,4 +208,16 @@ void regulator_disable(uint32_t enable)
 
 	if (enable & REG_SMPS3)
 		rpm_send_data(&smps3[GENERIC_DISABLE][0], 36, RPM_REQUEST_TYPE);
+
+    if (enable & REG_LDO2)
+        rpm_send_data(&ldo2[GENERIC_ENABLE][0], 36, RPM_REQUEST_TYPE);
+
+    if (enable & REG_LDO22)
+        rpm_send_data(&ldo22[GENERIC_ENABLE][0], 36, RPM_REQUEST_TYPE);
+
+    if (enable & REG_LDO23)
+        rpm_send_data(&ldo23[GENERIC_ENABLE][0], 36, RPM_REQUEST_TYPE);
+
+    if (enable & REG_LDO10)
+        rpm_send_data(&ldo10[GENERIC_ENABLE][0], 36, RPM_REQUEST_TYPE);
 }

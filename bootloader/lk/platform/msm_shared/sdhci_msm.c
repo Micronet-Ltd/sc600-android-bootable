@@ -816,7 +816,8 @@ retry_tuning:
 			if(!drv_type_changed)
 				drv_type_changed = true;
 
-			if (mmc_set_drv_type(host, card, drv_type))
+			//if (mmc_set_drv_type(host, card, drv_type))
+            if (quec_sdhci_setting(host, card, drv_type) == true)
 				goto retry_tuning;
 		}
 	}

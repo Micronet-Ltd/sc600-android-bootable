@@ -698,6 +698,19 @@ int install_package(const std::string& path, bool* wipe_cache, const std::string
   if (!android::base::WriteStringToFile(log_content, install_file)) {
     PLOG(ERROR) << "failed to write " << install_file;
   }
+  const char* UPDATE_SUCCESS_FLAG = "/cache/update_success_flag";
+  const char* UPDATE_FAIL_FLAG = "/cache/update_fail_flag";
+  remove(UPDATE_SUCCESS_FLAG);
+  remove(UPDATE_FAIL_FLAG);
+  const char* flag="false";
+   if (result == 0) {
+     flag="true";
+     android::base::WriteStringToFile("1", UPDATE_SUCCESS_FLAG);
+     chmod(UPDATE_SUCCESS_FLAG,0777);
+     } else {
+     android::base::WriteStringToFile("1", UPDATE_FAIL_FLAG);
+     chmod(UPDATE_FAIL_FLAG,0777);
+   }
 
   // Write a copy into last_log.
   LOG(INFO) << log_content;

@@ -38,6 +38,7 @@
 #include <limits.h>
 #include <kernel/thread.h>
 #include <arch/ops.h>
+#include <dev/uart.h>
 
 #include <dev/flash.h>
 #include <dev/flash-ubi.h>
@@ -62,6 +63,7 @@
 #include <decompress.h>
 #include <platform/timer.h>
 #include <sys/types.h>
+#include <regulator.h>
 #if USE_RPMB_FOR_DEVINFO
 #include <rpmb.h>
 #endif
@@ -69,6 +71,8 @@
 #if ENABLE_WBC
 #include <pm_app_smbchg.h>
 #endif
+#define DEVICE_TREE_IN_ABOOT
+#include <ctype.h>
 
 #if DEVICE_TREE
 #include <libfdt.h>
@@ -240,6 +244,7 @@ static unsigned page_mask = 0;
 static unsigned mmc_blocksize = 0;
 static unsigned mmc_blocksize_mask = 0;
 static char ffbm_mode_string[FFBM_MODE_BUF_SIZE];
+static char pmi632_exist_string[30]=" androidboot.pmi632_exist=";
 static bool boot_into_ffbm;
 static char *target_boot_params = NULL;
 static bool boot_reason_alarm;
@@ -425,6 +430,20 @@ void update_battery_status(void)
 	snprintf(battery_soc_ok ,MAX_RSP_SIZE, "%s",target_battery_soc_ok()? "yes":"no");
 }
 #endif
+
+static void check_pmi632_exist(void)
+{
+
+    if(target_get_pmic() == PMIC_IS_PMI632)
+    {
+        strcat(pmi632_exist_string,"true");
+    }
+    else
+    {
+        strcat(pmi632_exist_string,"false");
+    }
+
+}
 
 unsigned char *update_cmdline(const char * cmdline)
 {
@@ -701,7 +720,7 @@ unsigned char *update_cmdline(const char * cmdline)
 		cmdline_len += strlen (dtbo_idx_str);
 	}
 #endif
-
+	cmdline_len += strlen(pmi632_exist_string);
 	if (cmdline_len > 0) {
 		const char *src;
 		unsigned char *dst;
@@ -888,6 +907,11 @@ unsigned char *update_cmdline(const char * cmdline)
 				while ((*dst++ = *src++));
 				break;
 		}
+
+		src = pmi632_exist_string;
+		if (have_cmdline) --dst;
+			have_cmdline = 1;
+		while ((*dst++ = *src++));
 
 		if (strlen(display_panel_buf)) {
 			src = display_panel_buf;
@@ -4996,16 +5020,135 @@ void aboot_fastboot_register_commands(void)
 #endif
 }
 
+#if 1
+#include <platform/gpio.h>
+#define CMD_BUFFER_LEN  64
+int cmd_buffer_cnt = 0;
+char cmd_buffer[CMD_BUFFER_LEN];
+
+void gpio_test_mode(void)
+{
+    char ch;
+    uint32_t gpio, enable, i;
+
+    cmd_buffer_cnt = 0;
+    memset(cmd_buffer, 0, CMD_BUFFER_LEN);
+
+    while(1)
+    {
+        ch = uart_getc(0, 1);
+        putc(ch);
+
+        if(ch == 0x0a)
+        {
+            continue;
+        }
+
+        if(ch == 0x0d)
+        {
+            printf("CMD BUF %s.\n", cmd_buffer);
+
+            if(memcmp(cmd_buffer, "GPIO,", 5))
+            {
+                printf("%s: %d\n", __func__, __LINE__);
+                goto error;
+            }
+
+            gpio = 0;
+            enable = 0;
+            i = 5;
+
+            while(isdigit(cmd_buffer[i]))
+            {
+                gpio *= 10;
+                gpio += cmd_buffer[i] - '0';
+                i++;
+                printf(" the gpio val is = %d.\n", gpio);
+            }
+
+            if(gpio == 999)
+            {
+                break;
+            }
+
+            i++;
+            while(isdigit(cmd_buffer[i]))
+            {
+                enable *= 10;
+                enable += cmd_buffer[i] - '0';
+                i++;
+                printf(" the enable val is = %d.\n", enable);
+            }
+
+            if(enable == 1)
+            {
+                enable = 2;
+            }
+
+
+            printf("gpio=%d,enable=%d.\n", gpio, enable);
+
+            if(80 ==gpio || 81 == gpio || 82 == gpio)
+            {
+                switch(gpio){
+                case 80:
+                    gpio =110;
+                    break;
+                case 81:
+                    gpio =111;
+                    break;
+                case 82:
+                    gpio =112;
+                    break;
+                }
+            }
+
+            gpio_tlmm_config(gpio, 0, GPIO_OUTPUT, GPIO_NO_PULL, GPIO_8MA, GPIO_DISABLE);
+            dsb();
+            gpio_set_dir(gpio, enable);
+            if(enable ==0)
+            {
+                printf("gpio pull low\n");
+            }
+            else{
+                printf("gpio pull up \n");
+            }
+            dsb();
+
+            cmd_buffer_cnt = 0;
+            memset(cmd_buffer, 0, CMD_BUFFER_LEN);
+            printf("OK\r\n");
+            continue;
+error:
+            printf("ERROR\r\n");
+            cmd_buffer_cnt = 0;
+            memset(cmd_buffer, 0, CMD_BUFFER_LEN);
+        }
+        else
+        {
+            cmd_buffer[cmd_buffer_cnt++] = ch;
+            if(cmd_buffer_cnt == CMD_BUFFER_LEN)
+            {
+                cmd_buffer_cnt = 0;
+            }
+        }
+    }
+}
+#endif
 void aboot_init(const struct app_descriptor *app)
 {
 	unsigned reboot_mode = 0;
 	int boot_err_type = 0;
 	int boot_slot = INVALID;
+	int i;
+	char ch;
 
 	/* Initialise wdog to catch early lk crashes */
 #if WDOG_SUPPORT
 	msm_wdog_init();
 #endif
+
+	check_pmi632_exist();
 
 	/* Setup page size information for nv storage */
 	if (target_is_emmc_boot())
@@ -5074,6 +5217,78 @@ void aboot_init(const struct app_descriptor *app)
 
 	memset(display_panel_buf, '\0', MAX_PANEL_BUF_SIZE);
 
+//joe add fastboot complie option 20180830
+#if 1
+//#if 1
+/* author:	zahi.song
+ * date:	2016/08/11
+ * purpose:	CTL+C key, enter the GPIO test 
+ */
+    printf("CTRL+C: enter instruction mode\n");
+
+    for (i = 100; i != 0; --i)
+    {
+        if (!getc(&ch) && ch == 0x03)
+        {
+            dprintf(CRITICAL,"%s ch: %x\n", __func__, ch);
+            printf("Please input your instruction:\n\n");
+            printf("PINTEST: test gpio(s) connectivity.\n");
+            regulator_enable(REG_LDO2 | REG_LDO22 | REG_LDO23 | REG_LDO10); //kyle:add for Pin test ldo 20170701
+
+            while(1)
+            {
+                ch = uart_getc(0, 1);
+                putc(ch);
+
+                dprintf(CRITICAL,"%s ch: %x\n", __func__, ch);
+
+                if((ch >= 'A' && ch <= 'Z')
+                 ||(ch >= 'a' && ch <= 'z')
+                 || ch == 0x0d)
+                {
+                    if(ch == 0x0d)
+                    {
+
+                        if(strlen("PINTEST") ==(unsigned int)cmd_buffer_cnt
+                            && !memcmp(cmd_buffer, "PINTEST", cmd_buffer_cnt))
+                        {
+                            printf("PIN TEST MODE\r\n", __func__);
+                            gpio_test_mode();
+                            goto normal_boot;
+                        }
+                        else
+                        {
+                            printf("%s: invalid cmd %s.\n", __func__, cmd_buffer);
+                        }
+
+                        cmd_buffer_cnt = 0;
+                        memset(cmd_buffer, 0, CMD_BUFFER_LEN);
+                    }
+                    else
+                    {
+                        cmd_buffer[cmd_buffer_cnt++] = ch;
+                        if(cmd_buffer_cnt == CMD_BUFFER_LEN)
+                        {
+                            cmd_buffer_cnt = 0;
+                        }
+                    }
+                }
+                else
+                {
+                    //printf("%s: line=%d. 0x%x\n", __func__, __LINE__, ch);
+                    cmd_buffer_cnt = 0;
+                }
+            }
+
+        }
+        mdelay(10);
+    }
+    printf("CTRL+C: out instruction mode\n");
+
+        printf("%s char: %c\n", __func__, ch);
+        mdelay(10);
+#endif
+
 	/*
 	 * Check power off reason if user force reset,
 	 * if yes phone will do normal boot.
@@ -5092,7 +5307,8 @@ void aboot_init(const struct app_descriptor *app)
 	}
 	if (!boot_into_fastboot)
 	{
-		if (keys_get_state(KEY_HOME) || keys_get_state(KEY_VOLUMEUP))
+		//if (keys_get_state(KEY_HOME) || keys_get_state(KEY_VOLUMEUP))
+		if (keys_get_state(KEY_HOME) || keys_get_state(KEY_BACK))
 			boot_into_recovery = 1;
 		if (!boot_into_recovery &&
 			(keys_get_state(KEY_BACK) || keys_get_state(KEY_VOLUMEDOWN)))

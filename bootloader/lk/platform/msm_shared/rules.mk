@@ -42,6 +42,7 @@ endif
 ifeq ($(ENABLE_SDHCI_SUPPORT),1)
 OBJS += \
 	$(LOCAL_DIR)/sdhci.o \
+	$(EMMC_BOOTLOADER_OUT)/platform/msm_shared/quec_sdhci.o \
 	$(LOCAL_DIR)/sdhci_msm.o \
 	$(LOCAL_DIR)/mmc_sdhci.o \
 	$(LOCAL_DIR)/mmc_wrapper.o

@@ -119,6 +119,7 @@ void target_early_init(void)
 {
 #if WITH_DEBUG_UART
 	uart_dm_init(1, 0, BLSP1_UART0_BASE);
+	uart_dm_init(5, 0, BLSP2_UART0_BASE);
 #endif
 }
 
@@ -458,6 +459,18 @@ void target_baseband_detect(struct board_data *board)
 		dprintf(CRITICAL, "Platform type: %u is not supported\n",platform);
 		ASSERT(0);
 	};
+}
+
+uint8_t target_panel_auto_detect_enabled()
+{
+	uint8_t ret = 0;
+
+	switch(board_hardware_id()) {
+	default:
+		ret = 1;
+		break;
+	}
+	return ret;
 }
 
 unsigned target_baseband()

@@ -63,27 +63,23 @@ struct fbcon_config mipi_fb_cfg = {
 	.update_done = NULL,
 };
 
-static char read_id_a1h_cmd[4] = { 0xA1, 0x00, 0x06, 0xA0 };	/* DTYPE_DCS_READ */
-static struct mipi_dsi_cmd read_ddb_start_cmd =
-	{sizeof(read_id_a1h_cmd), read_id_a1h_cmd,  0x00};
-
 void secure_writel(uint32_t, uint32_t);
 uint32_t secure_readl(uint32_t);
-
-static uint32_t response_value = 0;
 
 static uint32_t mdss_dsi_read_panel_signature(struct mipi_panel_info *mipi)
 {
 	uint32_t rec_buf[1];
 	uint32_t *lp = rec_buf, data;
-	uint32_t ret = response_value;
+	uint32_t ret = 0;
 	uint32_t panel_signature = mipi->signature;
+	if ((panel_signature == 0) || (panel_signature == 0xFFFF))
+		return ret;
 
 #if (DISPLAY_TYPE_MDSS == 1)
-	if (ret && ret != panel_signature)
-		goto exit_read_signature;
+	if (mipi->panel_read_cmds ==NULL)
+		return 1;
 
-	ret = mdss_dsi_cmds_tx(mipi, &read_ddb_start_cmd, 1, 0);
+	ret = mdss_dsi_cmds_tx(mipi, mipi->panel_read_cmds, 1, 0);
 	if (ret)
 		goto exit_read_signature;
 	if (!mdss_dsi_cmds_rx(mipi, &lp, 1, 1))
@@ -91,14 +87,11 @@ static uint32_t mdss_dsi_read_panel_signature(struct mipi_panel_info *mipi)
 
 	data = ntohl(*lp);
 	data = data >> 8;
-	response_value = data;
-	if (response_value != panel_signature)
-		ret = response_value;
+	data = data & 0xffff;
+	if (data != panel_signature)
+		ret = 1;
 
 exit_read_signature:
-	/* Keep the non detectable panel at the end and set panel signature 0xFFFF */
-	if ((panel_signature == 0) || (panel_signature == 0xFFFF))
-		ret = 0;
 #endif
 	return ret;
 }

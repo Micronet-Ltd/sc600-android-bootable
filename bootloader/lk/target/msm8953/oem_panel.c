@@ -52,11 +52,19 @@
 #include "include/panel_truly_wuxga_video.h"
 #include "include/panel_hx8399c_fhd_pluse_video.h"
 #include "include/panel_hx8399c_hd_plus_video.h"
+#include "include/panel_ili9881c_720p_video.h"
+#include "include/panel_hx8394f_720p_video.h"
+#include "include/panel_ili9881d_720p_video.h"
 
 /*---------------------------------------------------------------------------*/
 /* static panel selection variable                                           */
 /*---------------------------------------------------------------------------*/
+static uint32_t auto_pan_loop = 0;
+
 enum {
+	ILI9881D_720P_VIDEO_PANEL,
+	HX8394F_720P_VIDEO_PANEL,
+	ILI9881C_720P_VIDEO_PANEL,
 	TRULY_1080P_VIDEO_PANEL,
 	TRULY_1080P_CMD_PANEL,
 	R69006_1080P_VIDEO_PANEL,
@@ -72,6 +80,9 @@ enum {
  * Any panel in this list can be selected using fastboot oem command.
  */
 static struct panel_list supp_panels[] = {
+	{"ili9881d_720p_video", ILI9881D_720P_VIDEO_PANEL},
+	{"hx8394f_720p_video", HX8394F_720P_VIDEO_PANEL},
+	{"ili9881c_720p_video", ILI9881C_720P_VIDEO_PANEL},
 	{"truly_1080p_video", TRULY_1080P_VIDEO_PANEL},
 	{"truly_1080p_cmd", TRULY_1080P_CMD_PANEL},
 	{"r69006_1080p_video", R69006_1080P_VIDEO_PANEL},
@@ -116,6 +127,94 @@ static int init_panel_data(struct panel_struct *panelstruct,
 	int pan_type = PANEL_TYPE_DSI;
 
 	switch (panel_id) {
+	case ILI9881D_720P_VIDEO_PANEL:
+		panelstruct->paneldata    = &ili9881d_720p_video_panel_data;
+		panelstruct->paneldata->panel_with_enable_gpio = 0;
+		panelstruct->panelres     = &ili9881d_720p_video_panel_res;
+		panelstruct->color        = &ili9881d_720p_video_color;
+		panelstruct->videopanel   = &ili9881d_720p_video_video_panel;
+		panelstruct->commandpanel = &ili9881d_720p_video_command_panel;
+		panelstruct->state        = &ili9881d_720p_video_state;
+		panelstruct->laneconfig   = &ili9881d_720p_video_lane_config;
+		panelstruct->paneltiminginfo
+			= &ili9881d_720p_video_timing_info;
+		panelstruct->panelresetseq
+					 = &ili9881d_720p_video_reset_seq;
+		panelstruct->backlightinfo = &ili9881d_720p_video_backlight;
+		pinfo->mipi.panel_on_cmds
+			= ili9881d_720p_video_on_command;
+		pinfo->mipi.panel_read_cmds
+			        = &ili9881d_720p_read_id_command;
+		pinfo->mipi.num_of_panel_on_cmds
+			= ILI9881D_720P_VIDEO_ON_COMMAND;
+		pinfo->mipi.panel_off_cmds
+			= ili9881d_720p_video_off_command;
+		pinfo->mipi.num_of_panel_off_cmds
+			= ILI9881D_720P_VIDEO_OFF_COMMAND;
+		memcpy(phy_db->timing,
+			ili9881d_720p_14nm_video_timings,
+			MAX_TIMING_CONFIG * sizeof(uint32_t));
+		pinfo->mipi.signature = 0xFFFF;//ILI9881D_720P_VIDEO_SIGNATURE;
+		break;
+	case HX8394F_720P_VIDEO_PANEL:
+		panelstruct->paneldata    = &hx8394f_720p_video_panel_data;
+		panelstruct->paneldata->panel_with_enable_gpio = 0;
+		panelstruct->panelres     = &hx8394f_720p_video_panel_res;
+		panelstruct->color        = &hx8394f_720p_video_color;
+		panelstruct->videopanel   = &hx8394f_720p_video_video_panel;
+		panelstruct->commandpanel = &hx8394f_720p_video_command_panel;
+		panelstruct->state        = &hx8394f_720p_video_state;
+		panelstruct->laneconfig   = &hx8394f_720p_video_lane_config;
+		panelstruct->paneltiminginfo
+					= &hx8394f_720p_video_timing_info;
+		panelstruct->panelresetseq
+					= &hx8394f_720p_video_reset_seq;
+		panelstruct->backlightinfo = &hx8394f_720p_video_backlight;
+		pinfo->mipi.panel_on_cmds
+					= hx8394f_720p_video_on_command;
+		pinfo->mipi.panel_read_cmds
+			        = &hx8394f_720p_read_id_command;
+		pinfo->mipi.num_of_panel_on_cmds
+					= HX8394F_720P_VIDEO_ON_COMMAND;
+		pinfo->mipi.panel_off_cmds
+			= hx8394f_720p_video_off_command;
+		pinfo->mipi.num_of_panel_off_cmds
+			= HX8394F_720P_VIDEO_OFF_COMMAND;
+		memcpy(phy_db->timing,
+			hx8394f_720p_14nm_video_timings,
+			MAX_TIMING_CONFIG * sizeof(uint32_t));
+		pinfo->mipi.signature = HX8394F_720P_VIDEO_SIGNATURE;
+		break;
+	case ILI9881C_720P_VIDEO_PANEL:
+		panelstruct->paneldata    = &ili9881c_720p_video_panel_data;
+		panelstruct->paneldata->panel_with_enable_gpio = 0;
+		panelstruct->panelres     = &ili9881c_720p_video_panel_res;
+		panelstruct->color        = &ili9881c_720p_video_color;
+		panelstruct->videopanel   = &ili9881c_720p_video_video_panel;
+		panelstruct->commandpanel = &ili9881c_720p_video_command_panel;
+		panelstruct->state        = &ili9881c_720p_video_state;
+		panelstruct->laneconfig   = &ili9881c_720p_video_lane_config;
+		panelstruct->paneltiminginfo
+			= &ili9881c_720p_video_timing_info;
+		panelstruct->panelresetseq
+					 = &ili9881c_720p_video_reset_seq;
+		panelstruct->backlightinfo = &ili9881c_720p_video_backlight;
+		pinfo->mipi.panel_on_cmds
+			= ili9881c_720p_video_on_command;
+		pinfo->mipi.panel_read_cmds
+			        = &ili9881c_720p_read_id_command;
+		pinfo->mipi.num_of_panel_on_cmds
+			= ILI9881C_720P_VIDEO_ON_COMMAND;
+		pinfo->mipi.panel_off_cmds
+			= ili9881c_720p_video_off_command;
+		pinfo->mipi.num_of_panel_off_cmds
+			= ILI9881C_720P_VIDEO_OFF_COMMAND;
+		memcpy(phy_db->timing,
+			ili9881c_720p_14nm_video_timings,
+			MAX_TIMING_CONFIG * sizeof(uint32_t));
+		//pinfo->dfps.panel_dfps = ili9881c_720p_video_dfps;
+		pinfo->mipi.signature = ILI9881C_720P_VIDEO_SIGNATURE;
+		break;
 	case TRULY_1080P_VIDEO_PANEL:
 		panelstruct->paneldata    = &truly_1080p_video_panel_data;
 		panelstruct->paneldata->panel_with_enable_gpio = 0;
@@ -370,15 +469,25 @@ int oem_panel_select(const char *panel_name, struct panel_struct *panelstruct,
 
 	switch (hw_id) {
 	case HW_PLATFORM_MTP:
-		panel_id = TRULY_1080P_VIDEO_PANEL;
-		if (platform_subtype == 0x03)
-			panel_id = HX8399C_FHD_PLUSE_VIDEO_PANEL;
-		break;
 	case HW_PLATFORM_SURF:
 	case HW_PLATFORM_RCM:
-		panel_id = TRULY_1080P_VIDEO_PANEL;
-		if (platform_subtype == 0x02)
-			 panel_id = HX8399C_FHD_PLUSE_VIDEO_PANEL;
+		if(auto_pan_loop == 0)
+		{
+			panel_id = ILI9881C_720P_VIDEO_PANEL;
+			auto_pan_loop++;
+			break;
+		}
+		if(auto_pan_loop == 1)
+		{
+			panel_id = HX8394F_720P_VIDEO_PANEL;
+			auto_pan_loop++;
+			break;
+		}
+		if(auto_pan_loop == 2)
+		{
+			panel_id = ILI9881D_720P_VIDEO_PANEL;
+			break;
+		}
 		break;
 	case HW_PLATFORM_QRD:
 		panel_id = R69006_1080P_CMD_PANEL;
