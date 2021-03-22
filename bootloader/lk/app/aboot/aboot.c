@@ -1150,8 +1150,8 @@ void boot_linux(void *kernel, unsigned *tags,
 			wait_for_users_action();
 #else
 			dprintf(CRITICAL,
-				"The dm-verity is not started in enforcing mode.\nWait for 5 seconds before proceeding\n");
-			mdelay(5000);
+				"The dm-verity is not started in enforcing mode.\nWait for 1 seconds before proceeding\n");
+			mdelay(1000);
 #endif
 		}
 	}
@@ -1349,8 +1349,8 @@ static void verify_signed_bootimg(uint32_t bootimg_addr, uint32_t bootimg_size)
 #endif
 #else
 			dprintf(CRITICAL,
-					"Your device has failed verification and may not work properly.\nWait for 5 seconds before proceeding\n");
-			mdelay(5000);
+					"Your device has failed verification and may not work properly.\nWait for 1 seconds before proceeding\n");
+			mdelay(1000);
 #endif
 
 			break;
@@ -1360,8 +1360,8 @@ static void verify_signed_bootimg(uint32_t bootimg_addr, uint32_t bootimg_size)
 			wait_for_users_action();
 #else
 			dprintf(CRITICAL,
-					"Your device has loaded a different operating system.\nWait for 5 seconds before proceeding\n");
-			mdelay(5000);
+					"Your device has loaded a different operating system.\nWait for 1 seconds before proceeding\n");
+			mdelay(1000);
 #endif
 			break;
 		default:
@@ -1857,8 +1857,8 @@ int boot_linux_from_mmc(void)
 		wait_for_users_action();
 #else
 		dprintf(CRITICAL,
-			"Your device has been unlocked and can't be trusted.\nWait for 5 seconds before proceeding\n");
-		mdelay(5000);
+			"Your device has been unlocked and can't be trusted.\nWait for 1 seconds before proceeding\n");
+		mdelay(1000);
 #endif
 	}
 #endif

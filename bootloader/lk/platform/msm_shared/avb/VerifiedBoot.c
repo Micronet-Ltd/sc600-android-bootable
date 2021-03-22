@@ -705,8 +705,8 @@ static EFI_STATUS DisplayVerifiedBootScreen(bootinfo *Info)
 				wait_for_users_action();
 			//} else {
 				dprintf(INFO, "Your device has loaded a different operating system." \
-					"\nWait for 5 seconds before proceeding\n");
-				udelay(5000000);
+					"\nWait for 1 seconds before proceeding\n");
+				udelay(1000000);
 			//}
 			break;
 		case ORANGE:
