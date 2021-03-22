@@ -118,6 +118,13 @@ static const char *TEMPORARY_LOG_FILE = "/tmp/recovery.log";
 static const char *TEMPORARY_INSTALL_FILE = "/tmp/last_install";
 static const char *LAST_KMSG_FILE = "/cache/recovery/last_kmsg";
 static const char *LAST_LOG_FILE = "/cache/recovery/last_log";
+static const char *CACH_RECOVERY_FILE = "/cache/msm8953_64-incremental-ota.zip";
+static const char *SD_RECOVERY_FILE = "/sdcard/msm8953_64-incremental-ota.zip";
+static const char *SD_RECOVERY_FILE_OTA = "/sdcard/Android/data/com.redbend.client/files/msm8953_64_c801-ota-eng.micronet.zip";
+static const char *SD_RECOVERY_FILE_INCREMENTAL = "/sdcard/Android/data/com.redbend.client/files/msm8953_64-incremental-ota.zip";
+static const char *CACH_RECOVERY_RESULT = "/cache/result";
+static const char *MCU_STATE_FILE = "/sys/class/switch/dock/state";
+
 // We will try to apply the update package 5 times at most in case of an I/O error or
 // bspatch | imgpatch error.
 static const int RETRY_LIMIT = 4;
@@ -142,6 +149,8 @@ bool modified_flash = false;
 std::string stage;
 const char* reason = nullptr;
 struct selabel_handle* sehandle;
+
+static int wait_for_file(const char *filename, int timeout);
 
 /*
  * The recovery tool communicates with the main system through /cache files.
@@ -190,17 +199,17 @@ struct selabel_handle* sehandle;
 
 // Open a given path, mounting partitions as necessary.
 FILE* fopen_path(const char* path, const char* mode) {
-  if (ensure_path_mounted(path) != 0) {
-    LOG(ERROR) << "Can't mount " << path;
-    return nullptr;
-  }
+    if (ensure_path_mounted(path) != 0) {
+        LOG(ERROR) << "Can't mount " << path;
+        return nullptr;
+    }
 
-  // When writing, try to create the containing directory, if necessary. Use generous permissions,
-  // the system (init.rc) will reset them.
-  if (strchr("wa", mode[0])) {
-    mkdir_recursively(path, 0777, true, sehandle);
-  }
-  return fopen(path, mode);
+    // When writing, try to create the containing directory, if necessary. Use generous permissions,
+    // the system (init.rc) will reset them.
+    if (strchr("wa", mode[0])) {
+        mkdir_recursively(path, 0777, true, sehandle);
+    }
+    return fopen(path, mode);
 }
 
 // close a file, log an error if the error indicator is set
@@ -278,8 +287,7 @@ static void redirect_stdio(const char* filename) {
         size_t len = 0;
         while (getline(&line, &len, pipe_fp) != -1) {
             auto now = std::chrono::steady_clock::now();
-            double duration = std::chrono::duration_cast<std::chrono::duration<double>>(
-                    now - start).count();
+            double duration = std::chrono::duration_cast<std::chrono::duration<double>>(now - start).count();
             if (line[0] == '\n') {
                 fprintf(log_fp, "[%12.6lf]\n", duration);
             } else {
@@ -428,27 +436,27 @@ static void copy_log_file_to_pmsg(const char* source, const char* destination) {
 static off_t tmplog_offset = 0;
 
 static void copy_log_file(const char* source, const char* destination, bool append) {
-  FILE* dest_fp = fopen_path(destination, append ? "ae" : "we");
-  if (dest_fp == nullptr) {
-    PLOG(ERROR) << "Can't open " << destination;
-  } else {
-    FILE* source_fp = fopen(source, "re");
-    if (source_fp != nullptr) {
-      if (append) {
-        fseeko(source_fp, tmplog_offset, SEEK_SET);  // Since last write
-      }
-      char buf[4096];
-      size_t bytes;
-      while ((bytes = fread(buf, 1, sizeof(buf), source_fp)) != 0) {
-        fwrite(buf, 1, bytes, dest_fp);
-      }
-      if (append) {
-        tmplog_offset = ftello(source_fp);
-      }
-      check_and_fclose(source_fp, source);
+    FILE* dest_fp = fopen_path(destination, append ? "ae" : "we");
+    if (dest_fp == nullptr) {
+        PLOG(ERROR) << "Can't open " << destination;
+    } else {
+        FILE* source_fp = fopen(source, "re");
+        if (source_fp != nullptr) {
+            if (append) {
+                fseeko(source_fp, tmplog_offset, SEEK_SET);  // Since last write
+            }
+            char buf[4096];
+            size_t bytes;
+            while ((bytes = fread(buf, 1, sizeof(buf), source_fp)) != 0) {
+              fwrite(buf, 1, bytes, dest_fp);
+            }
+            if (append) {
+              tmplog_offset = ftello(source_fp);
+            }
+            check_and_fclose(source_fp, source);
+        }
+        check_and_fclose(dest_fp, destination);
     }
-    check_and_fclose(dest_fp, destination);
-  }
 }
 
 static void copy_logs() {
@@ -491,34 +499,34 @@ static void copy_logs() {
 // copy our log file to cache as well (for the system to read). This function is
 // idempotent: call it as many times as you like.
 static void finish_recovery() {
-  // Save the locale to cache, so if recovery is next started up without a '--locale' argument
-  // (e.g., directly from the bootloader) it will use the last-known locale.
-  if (!locale.empty() && has_cache) {
-    LOG(INFO) << "Saving locale \"" << locale << "\"";
-    if (ensure_path_mounted(LOCALE_FILE) != 0) {
-      LOG(ERROR) << "Failed to mount " << LOCALE_FILE;
-    } else if (!android::base::WriteStringToFile(locale, LOCALE_FILE)) {
-      PLOG(ERROR) << "Failed to save locale to " << LOCALE_FILE;
+    // Save the locale to cache, so if recovery is next started up without a '--locale' argument
+    // (e.g., directly from the bootloader) it will use the last-known locale.
+    if (!locale.empty() && has_cache) {
+        LOG(INFO) << "Saving locale \"" << locale << "\"";
+        if (ensure_path_mounted(LOCALE_FILE) != 0) {
+            LOG(ERROR) << "Failed to mount " << LOCALE_FILE;
+        } else if (!android::base::WriteStringToFile(locale, LOCALE_FILE)) {
+            PLOG(ERROR) << "Failed to save locale to " << LOCALE_FILE;
+        }
     }
-  }
 
-  copy_logs();
+    copy_logs();
 
-  // Reset to normal system boot so recovery won't cycle indefinitely.
-  std::string err;
-  if (!clear_bootloader_message(&err)) {
-    LOG(ERROR) << "Failed to clear BCB message: " << err;
-  }
-
-  // Remove the command file, so recovery won't repeat indefinitely.
-  if (has_cache) {
-    if (ensure_path_mounted(COMMAND_FILE) != 0 || (unlink(COMMAND_FILE) && errno != ENOENT)) {
-      LOG(WARNING) << "Can't unlink " << COMMAND_FILE;
+    // Reset to normal system boot so recovery won't cycle indefinitely.
+    std::string err;
+    if (!clear_bootloader_message(&err)) {
+        LOG(ERROR) << "Failed to clear BCB message: " << err;
     }
-    ensure_path_unmounted(CACHE_ROOT);
-  }
 
-  sync();  // For good measure.
+    // Remove the command file, so recovery won't repeat indefinitely.
+    if (has_cache) {
+        if (ensure_path_mounted(COMMAND_FILE) != 0 || (unlink(COMMAND_FILE) && errno != ENOENT)) {
+            LOG(WARNING) << "Can't unlink " << COMMAND_FILE;
+        }
+        ensure_path_unmounted(CACHE_ROOT);
+    }
+
+    sync();  // For good measure.
 }
 
 struct saved_log_file {
@@ -1056,23 +1064,17 @@ static int do_sdcard_mount_for_ufs()
     ui->Print("Update via sdcard on UFS dev.Mounting card\n");
     Volume *v = volume_for_mount_point("/sdcard");
     if (v == nullptr) {
-            ui->Print("Unknown volume for /sdcard.Check fstab\n");
-            goto error;
+        ui->Print("Unknown volume for /sdcard.Check fstab\n");
+        goto error;
     }
     if (strncmp(v->fs_type, "vfat", sizeof("vfat"))) {
-            ui->Print("Unsupported format on the sdcard: %s\n",
-                            v->fs_type);
-            goto error;
+        ui->Print("Unsupported format on the sdcard: %s\n", v->fs_type);
+        goto error;
     }
-    rc = mount(UFS_DEV_SDCARD_BLK_PATH,
-                    v->mount_point,
-                    v->fs_type,
-                    v->flags,
-                    v->fs_options);
+    rc = mount(UFS_DEV_SDCARD_BLK_PATH, v->mount_point, v->fs_type, v->flags, v->fs_options);
     if (rc) {
-            ui->Print("Failed to mount sdcard : %s\n",
-                            strerror(errno));
-            goto error;
+        ui->Print("Failed to mount sdcard : %s\n", strerror(errno));
+        goto error;
     }
     ui->Print("Done mounting sdcard\n");
     return 0;
@@ -1088,15 +1090,15 @@ static int apply_from_sdcard(Device* device, bool* wipe_cache) {
     modified_flash = true;
 
     if (is_ufs_dev()) {
-            if (do_sdcard_mount_for_ufs() != 0) {
-                    ui->Print("\nFailed to mount sdcard\n");
-                    return INSTALL_ERROR;
-            }
+        if (do_sdcard_mount_for_ufs() != 0) {
+            ui->Print("\nFailed to mount sdcard\n");
+            return INSTALL_ERROR;
+        }
     } else  {
-             if (ensure_path_mounted(SDCARD_ROOT) != 0) {
-                 ui->Print("\n-- Couldn't mount %s.\n", SDCARD_ROOT);
-              return INSTALL_ERROR;
-             }
+        if (ensure_path_mounted(SDCARD_ROOT) != 0) {
+            ui->Print("\n-- Couldn't mount %s.\n", SDCARD_ROOT);
+            return INSTALL_ERROR;
+        }
     }
 
     std::string path = browse_directory(SDCARD_ROOT, device);
@@ -1145,7 +1147,7 @@ static int apply_from_sdcard(Device* device, bool* wipe_cache) {
         }
 
         result = install_package(FUSE_SIDELOAD_HOST_PATHNAME, wipe_cache,
-                                 TEMPORARY_INSTALL_FILE, true, 0/*retry_count*/);
+                                 TEMPORARY_INSTALL_FILE, 0, 0/*retry_count*/);
         break;
     }
 
@@ -1166,118 +1168,412 @@ static int apply_from_sdcard(Device* device, bool* wipe_cache) {
     return result;
 }
 
+static int apply_from_sdcard_auto(bool* wipe_cache) {
+
+    int result = INSTALL_ERROR;
+
+    modified_flash = true;
+
+    if (ensure_path_mounted(SDCARD_ROOT) != 0) {
+        ui->Print("\n-- Couldn't mount %s.\n", SDCARD_ROOT);
+        return INSTALL_ERROR;
+    }
+    static const char *SD_RECOVERY_FILE_TEMP;
+    if(wait_for_file(SD_RECOVERY_FILE_INCREMENTAL, 1) == 0){
+        SD_RECOVERY_FILE_TEMP = SD_RECOVERY_FILE_INCREMENTAL;
+    }else if(wait_for_file(SD_RECOVERY_FILE_OTA, 1) == 0){
+        SD_RECOVERY_FILE_TEMP = SD_RECOVERY_FILE_OTA;
+    }else {
+         SD_RECOVERY_FILE_TEMP = SD_RECOVERY_FILE;
+    }
+    
+    result = wait_for_file(SD_RECOVERY_FILE_TEMP, 1);
+    if (result != 0) {
+        ui->Print("\n-- No package file %s.\n", SD_RECOVERY_FILE_TEMP);
+        return INSTALL_ERROR;
+    }
+
+    ui->Print("\n-- Install %s ...\n", SD_RECOVERY_FILE_TEMP);
+    set_sdcard_update_bootloader_message();
+  
+    result = install_package(SD_RECOVERY_FILE_TEMP, wipe_cache,TEMPORARY_INSTALL_FILE, false, 0);
+
+    return result;
+}
+
+static int apply_from_cache(bool* wipe_cache) {
+
+    int result = INSTALL_ERROR;
+
+    modified_flash = true;
+
+    if (ensure_path_mounted(CACHE_ROOT) != 0) {
+        ui->Print("\n-- Couldn't mount %s.\n", CACHE_ROOT);
+        return INSTALL_ERROR;
+    }
+    result = wait_for_file(CACH_RECOVERY_FILE, 1);
+    if (result != 0) {
+        ui->Print("\n-- No package file %s.\n", CACH_RECOVERY_FILE);
+        return INSTALL_ERROR;
+    }
+
+    ui->Print("\n-- Install %s ...\n", CACH_RECOVERY_FILE);
+    set_sdcard_update_bootloader_message();
+  
+    result = install_package(CACH_RECOVERY_FILE, wipe_cache,TEMPORARY_INSTALL_FILE, false, 0);
+
+    return result;
+}
+
+static time_t gettime(void)
+{
+    struct timespec ts;
+    int err;
+
+    err = clock_gettime(CLOCK_MONOTONIC, &ts);
+    if (err < 0) {
+        printf("clock_gettime(CLOCK_MONOTONIC) failed: %s\n", strerror(errno));
+        return 0;
+    }
+
+    return ts.tv_sec;
+}
+
+static int wait_for_file(const char *filename, int timeout)
+{
+    struct stat info;
+    time_t timeout_time = gettime() + timeout;
+    int err = -1;
+
+    do {
+        err = stat(filename, &info);
+        if (0 == err) {
+            printf("mcu update[%s]: %s found\n", __func__, filename);
+            break;
+        }
+
+        if (errno == ENOENT) {
+            //printf("mcu update[%s]: %s not found\n", __func__, filename);
+        }
+
+        if (-1 != timeout) {
+            if (gettime() > timeout_time) {
+                printf("mcu update[%s]: %s timeout\n", __func__, filename);
+                break;
+            }
+        }
+        usleep(10000);
+    } while (1); 
+
+    return err;
+}
+
+static int get_dock_state() {
+    int state = 0;
+    time_t timeout_time = gettime() + 40;
+
+    if (0 == wait_for_file(MCU_STATE_FILE, 8)) {
+        timeout_time = gettime() + 40;
+        do {
+            FILE* source_fp = fopen(MCU_STATE_FILE, "r");
+            if (source_fp != 0) {
+                fscanf(source_fp, "%d", &state);
+                fclose(source_fp);
+                if (state > 0) {
+                    break;
+                }
+                usleep(10000);
+            }
+        } while (gettime() < timeout_time); 
+    }
+
+    LOG(INFO) << __func__ << ":" << state << "[" << gettime() << "]";
+
+    return state;
+}
+
+int mcu_update_exists() {
+    //mcu/fpga update
+    int status = wait_for_file("/cache/mcu0.bin", 4); 
+    if (0 != status) {
+        status = wait_for_file("/cache/mcu1.bin", 4); 
+    }
+    if (0 != status) {
+        status = wait_for_file("/cache/fpga.bin", 4); 
+    }
+    return (status == 0);
+}
+
+void save_result(int stat) {
+    int f;
+    char result[8] = {0};
+    f = open(CACH_RECOVERY_RESULT, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
+    if (f >= 0) {
+        snprintf(result, sizeof(result) - 1, "%d", stat);
+        write(f, result, strlen(result) + 1);
+        fsync(f);
+        close(f);
+        chmod(CACH_RECOVERY_RESULT, 0644);
+    }
+}
+
+int must_show_menu(void) {
+    int ret = 0;
+
+    if (0 == wait_for_file("/cache/manual_menu", 1)) {
+        ret = 1;
+    }
+    return ret;
+}
+
+enum UpdateActIndex {
+    mcu_update = 0,
+    sys_update,
+};
+
+int is_autoapdate(Device::BuiltinAction act[])
+{
+    int auto_update = 0;
+    if (must_show_menu()) {
+        return 0;
+    }
+    if (mcu_update_exists()) {
+        act[mcu_update] = Device::APPLY_MCU_FPGA;
+        auto_update = 1;
+        modified_flash = true;//for log saving in any case
+    }
+
+    if(0 == ensure_path_mounted(SDCARD_ROOT) && (0 == wait_for_file(SD_RECOVERY_FILE, 1) || 0 == wait_for_file(SD_RECOVERY_FILE_OTA, 1) || 0 == wait_for_file(SD_RECOVERY_FILE_INCREMENTAL, 1))) { //system updates sd and cache 
+        act[sys_update] = Device::APPLY_SDCARD;
+        auto_update = 1;
+        modified_flash = true;//for log saving in any case
+    }
+    else if(0 == wait_for_file(CACH_RECOVERY_FILE, 1)) {
+        act[sys_update] = Device::APPLY_RB;
+        auto_update = 1;
+        modified_flash = true;//for log saving in any case
+    }
+    if (*act != Device::APPLY_SDCARD) {
+        ensure_path_unmounted(SDCARD_ROOT);
+    }
+    return auto_update;
+}
+
+#undef REDIRECT_STDIO
+#define MCU_UPD_LOG     "/cache/rec_mcu_ua.log"
+//#define REDIRECT_STDIO MCU_UPD_LOG
+//#define REDIRECT_STDIO TTYHSL0_UPD_LOG
+
+#if defined (REDIRECT_STDIO)
+static void redirect_stdio_m(const char* filename)
+{
+    // If these fail, there's not really anywhere to complain...
+    freopen(filename, "a", stdout);
+    setbuf(stdout, 0);
+    freopen(filename, "a", stderr);
+    setbuf(stderr, 0);
+}
+#endif
+
 // Returns REBOOT, SHUTDOWN, or REBOOT_BOOTLOADER. Returning NO_ACTION means to take the default,
 // which is to reboot or shutdown depending on if the --shutdown_after flag was passed to recovery.
 static Device::BuiltinAction prompt_and_wait(Device* device, int status) {
-  for (;;) {
-    finish_recovery();
-    switch (status) {
-      case INSTALL_SUCCESS:
-      case INSTALL_NONE:
-        ui->SetBackground(RecoveryUI::NO_COMMAND);
-        break;
+    int chosen_item;
+    Device::BuiltinAction chosen_action;
+    Device::BuiltinAction act[4] = {Device::NO_ACTION};
+    
+    int autoupdate = 0;
 
-      case INSTALL_ERROR:
-      case INSTALL_CORRUPT:
-        ui->SetBackground(RecoveryUI::ERROR);
-        break;
+    std::string mcu_ua_stat;
+    std::string delta_path;
+
+    ensure_path_mounted(CACHE_ROOT);
+
+    autoupdate = is_autoapdate(act);
+    if (autoupdate) {
+        ui->ShowText(false);
+        ui->SetBackground(RecoveryUI::INSTALLING_UPDATE);
+        ui->SetProgressType(RecoveryUI::INDETERMINATE);
+        chosen_action = (act[mcu_update] != Device::NO_ACTION) ? act[mcu_update] : act[sys_update];
     }
-    ui->SetProgressType(RecoveryUI::EMPTY);
 
-    int chosen_item = get_menu_selection(nullptr, device->GetMenuItems(), false, 0, device);
-
-    // Device-specific code may take some action here. It may return one of the core actions
-    // handled in the switch statement below.
-    Device::BuiltinAction chosen_action =
-        (chosen_item == -1) ? Device::REBOOT : device->InvokeMenuItem(chosen_item);
-
-    bool should_wipe_cache = false;
-    switch (chosen_action) {
-      case Device::NO_ACTION:
-        break;
-
-      case Device::REBOOT:
-      case Device::SHUTDOWN:
-      case Device::REBOOT_BOOTLOADER:
-        return chosen_action;
-
-      case Device::WIPE_DATA:
-        if (ui->IsTextVisible()) {
-          if (ask_to_wipe_data(device)) {
-            wipe_data(device);
-          }
-        } else {
-          wipe_data(device);
-          return Device::NO_ACTION;
-        }
-        break;
-
-      case Device::WIPE_CACHE:
-        wipe_cache(ui->IsTextVisible(), device);
-        if (!ui->IsTextVisible()) return Device::NO_ACTION;
-        break;
-
-      case Device::APPLY_ADB_SIDELOAD:
-      case Device::APPLY_SDCARD:
-        {
-          bool adb = (chosen_action == Device::APPLY_ADB_SIDELOAD);
-          if (adb) {
-            status = apply_from_adb(&should_wipe_cache, TEMPORARY_INSTALL_FILE);
-          } else {
-            status = apply_from_sdcard(device, &should_wipe_cache);
-          }
-
-          if (status == INSTALL_SUCCESS && should_wipe_cache) {
-            if (!wipe_cache(false, device)) {
-              status = INSTALL_ERROR;
+    for (;;) {
+        finish_recovery();
+        if (0 == autoupdate) {
+            switch (status) {
+                case INSTALL_SUCCESS:
+                case INSTALL_NONE:
+                    ui->SetBackground(RecoveryUI::NO_COMMAND);
+                    break;
+                case INSTALL_ERROR:
+                case INSTALL_CORRUPT:
+                    ui->SetBackground(RecoveryUI::ERROR);
+                    break;
             }
-          }
+            ui->SetProgressType(RecoveryUI::EMPTY);
 
-          if (status != INSTALL_SUCCESS) {
-            ui->SetBackground(RecoveryUI::ERROR);
-            ui->Print("Installation aborted.\n");
-            copy_logs();
-          } else if (!ui->IsTextVisible()) {
-            return Device::NO_ACTION;  // reboot if logs aren't visible
-          } else {
-            ui->Print("\nInstall from %s complete.\n", adb ? "ADB" : "SD card");
-          }
+            chosen_item = get_menu_selection(nullptr, device->GetMenuItems(), false, 0, device); 
+
+            // Device-specific code may take some action here. It may return one of the core actions
+            // handled in the switch statement below.
+            chosen_action =
+                (chosen_item == -1) ? Device::REBOOT : device->InvokeMenuItem(chosen_item);
         }
-        break;
 
-      case Device::VIEW_RECOVERY_LOGS:
-        choose_recovery_file(device);
-        break;
+        bool should_wipe_cache = false;
+        switch (chosen_action) {
+            case Device::NO_ACTION:
+                break;
+            case Device::REBOOT:
+            case Device::SHUTDOWN:
+            case Device::REBOOT_BOOTLOADER:
+                return chosen_action;
+            case Device::APPLY_MCU_FPGA:
+                ensure_path_mounted(CACHE_ROOT);
+                #if defined (REDIRECT_STDIO)
+                    redirect_stdio_m(REDIRECT_STDIO);
+                    LOG(INFO) << __func__ << ": mount system";
+                    if (android::base::GetBoolProperty("ro.build.system_root_image", false)) {
+                        if (ensure_path_mounted_at("/", "/system_root") != -1) {
+                            ui->Print("Mounted /system.\n");
+                        }
+                    } else {
+                        if (ensure_path_mounted("/system") != -1) {
+                            ui->Print("Mounted /system.\n");
+                        }
+                    }
+                #endif
+                if(get_dock_state() <= 0) {//don't start if disconnected
+                    ui->Print("Cradle is not connected.\n");
+                    printf("cradle detached %d[%d]\n", get_dock_state(), (int)gettime());
+                    if(1 == autoupdate) {
+                        return Device::REBOOT;
+                    }
+                    break;
+                }
+                ui->Print("Updating from MCU/FPGA\nDon't cut the power\n");
+                android::base::SetProperty("ctl.stop", "mcu_ua");
 
-      case Device::RUN_GRAPHICS_TEST:
-        run_graphics_test();
-        break;
+                if(0 == autoupdate) {
+                   if(!mcu_update_exists()) {
+                        ui->Print("General failure: mcu/fpga binaries don't exist\n");
+                        break;
+                    }
+                }
+                close(open("/tmp/.rb_mcu_update_got", O_WRONLY|O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH));
+                android::base::SetProperty("ctl.start", "mcu_ua");
+                ui->Print("Wait for completion\n");
+                wait_for_file("/tmp/.rb_mcu_update_done", -1);
+                ui->Print("Complete\n");
 
-      case Device::RUN_LOCALE_TEST: {
-        ScreenRecoveryUI* screen_ui = static_cast<ScreenRecoveryUI*>(ui);
-        screen_ui->CheckBackgroundTextImages(locale);
-        break;
-      }
-      case Device::MOUNT_SYSTEM:
-        // For a system image built with the root directory (i.e. system_root_image == "true"), we
-        // mount it to /system_root, and symlink /system to /system_root/system to make adb shell
-        // work (the symlink is created through the build system). (Bug: 22855115)
-        if (android::base::GetBoolProperty("ro.build.system_root_image", false)) {
-          if (ensure_path_mounted_at("/", "/system_root") != -1) {
-            ui->Print("Mounted /system.\n");
-          }
-        } else {
-          if (ensure_path_mounted("/system") != -1) {
-            ui->Print("Mounted /system.\n");
-          }
+                #if defined (REDIRECT_STDIO)
+                    redirect_stdio(TEMPORARY_LOG_FILE);
+                #endif
+                //continue system update
+                if(1 == autoupdate) {
+                    if(Device::NO_ACTION != act[sys_update]) {
+                        chosen_action = act[sys_update];
+                        modified_flash = true;
+                        break;
+                    }
+                    return Device::REBOOT;
+                }
+                break;
+            case Device::WIPE_DATA:
+                if (ui->IsTextVisible()) {
+                    if (ask_to_wipe_data(device)) {
+                        wipe_data(device);
+                    }
+                } else {
+                    wipe_data(device);
+                    return Device::NO_ACTION;
+                }
+                break;
+            case Device::WIPE_CACHE:
+                wipe_cache(ui->IsTextVisible(), device);
+                if (!ui->IsTextVisible()) return Device::NO_ACTION;
+                    break;
+            case Device::APPLY_ADB_SIDELOAD:
+            case Device::APPLY_SDCARD:
+            case Device::APPLY_RB: {
+                bool adb = (chosen_action == Device::APPLY_ADB_SIDELOAD);
+                if (adb) {
+                    status = apply_from_adb(&should_wipe_cache, TEMPORARY_INSTALL_FILE);
+                } else if(chosen_action == Device::APPLY_RB || chosen_action == Device::APPLY_SDCARD) {
+                    //check /cache/result
+                    if(1 == autoupdate) {
+                        ensure_path_mounted(CACHE_ROOT);
+                        if(0 == wait_for_file(CACH_RECOVERY_RESULT, 1)) {
+                            LOG(ERROR) << "Result file " << CACH_RECOVERY_RESULT << " exists, installation skipped.";
+                            return Device::REBOOT;
+                        }
+
+                    }
+
+                    if(chosen_action == Device::APPLY_RB) {
+                        status = apply_from_cache(&should_wipe_cache);
+                    } else {
+                        if(0 == autoupdate) {
+                            ensure_path_mounted(CACHE_ROOT);
+                            status = apply_from_sdcard(device, &should_wipe_cache);
+                        } else {  
+                            status = apply_from_sdcard_auto(&should_wipe_cache);
+                        }
+                    }
+                    if(1 == autoupdate) {
+                        save_result(status);
+                        return Device::REBOOT;
+                    }
+                }
+
+                if (status == INSTALL_SUCCESS && should_wipe_cache) {
+                    if (!wipe_cache(false, device)) {
+                        status = INSTALL_ERROR;
+                    }
+                }
+
+                if (status != INSTALL_SUCCESS) {
+                    ui->SetBackground(RecoveryUI::ERROR);
+                    ui->Print("Installation aborted.\n");
+                    copy_logs();
+                } else if (!ui->IsTextVisible()) {
+                    return Device::NO_ACTION;  // reboot if logs aren't visible
+                } else {
+                    ui->Print("\nInstall from %s complete.\n", adb ? "ADB" : (chosen_action == Device::APPLY_RB) ? "cache" : "SD card");
+                }
+                break;
+            }
+            case Device::VIEW_RECOVERY_LOGS:
+                choose_recovery_file(device);
+                break;
+            case Device::RUN_GRAPHICS_TEST:
+                run_graphics_test();
+                break;
+            case Device::RUN_LOCALE_TEST: {
+                ScreenRecoveryUI* screen_ui = static_cast<ScreenRecoveryUI*>(ui);
+                screen_ui->CheckBackgroundTextImages(locale);
+                break;
+            }
+            case Device::MOUNT_SYSTEM:
+                // For a system image built with the root directory (i.e. system_root_image == "true"), we
+                // mount it to /system_root, and symlink /system to /system_root/system to make adb shell
+                // work (the symlink is created through the build system). (Bug: 22855115)
+                if (android::base::GetBoolProperty("ro.build.system_root_image", false)) {
+                    if (ensure_path_mounted_at("/", "/system_root") != -1) {
+                        ui->Print("Mounted /system.\n");
+                    }
+                } else {
+                    if (ensure_path_mounted("/system") != -1) {
+                        ui->Print("Mounted /system.\n");
+                    }
+                }
+                break; 
         }
-        break;
     }
-  }
 }
 
 static void print_property(const char* key, const char* name, void* /* cookie */) {
-  printf("%s=%s\n", key, name);
+    printf("%s=%s\n", key, name);
 }
 
 static std::string load_locale_from_cache() {

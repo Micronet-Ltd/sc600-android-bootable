@@ -67,6 +67,8 @@ class Device {
     MOUNT_SYSTEM = 10,
     RUN_GRAPHICS_TEST = 11,
     RUN_LOCALE_TEST = 12,
+    APPLY_RB = 13,
+    APPLY_MCU_FPGA = 14,
   };
 
   // Return the list of menu items (an array of strings, NULL-terminated). The menu_position passed
