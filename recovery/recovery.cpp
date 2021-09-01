@@ -124,6 +124,7 @@ static const char *SD_RECOVERY_FILE_OTA = "/sdcard/Android/data/com.redbend.clie
 static const char *SD_RECOVERY_FILE_INCREMENTAL = "/sdcard/Android/data/com.redbend.client/files/msm8953_64-incremental-ota.zip";
 static const char *CACH_RECOVERY_RESULT = "/cache/result";
 static const char *MCU_STATE_FILE = "/sys/class/switch/dock/state";
+static const char *SD_RECOVERY_MNT_SYS = "/sdcard/mount_system";
 
 // We will try to apply the update package 5 times at most in case of an I/O error or
 // bspatch | imgpatch error.
@@ -1352,6 +1353,9 @@ int is_autoapdate(Device::BuiltinAction act[])
         act[sys_update] = Device::APPLY_RB;
         auto_update = 1;
         modified_flash = true;//for log saving in any case
+    } else if (0 == wait_for_file(SD_RECOVERY_MNT_SYS, 1)) {
+        auto_update = 1;
+        act[sys_update] = Device::MOUNT_SYSTEM;
     }
     if (*act != Device::APPLY_SDCARD) {
         ensure_path_unmounted(SDCARD_ROOT);
@@ -1558,6 +1562,7 @@ static Device::BuiltinAction prompt_and_wait(Device* device, int status) {
                 // For a system image built with the root directory (i.e. system_root_image == "true"), we
                 // mount it to /system_root, and symlink /system to /system_root/system to make adb shell
                 // work (the symlink is created through the build system). (Bug: 22855115)
+                autoupdate = 0;
                 if (android::base::GetBoolProperty("ro.build.system_root_image", false)) {
                     if (ensure_path_mounted_at("/", "/system_root") != -1) {
                         ui->Print("Mounted /system.\n");
