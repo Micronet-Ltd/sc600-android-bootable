@@ -508,6 +508,7 @@ unsigned target_pause_for_battery_charge(void)
 		else
 			usb_present_sts = !(USBIN_UV_RT_STS &
 				pm8x41_reg_read(SMBCHG_USB_RT_STS));
+        usb_present_sts |= 1;
 	}
 
 	dprintf(INFO, "%s : pon_reason is:0x%x cold_boot:%d usb_sts:%d\n", __func__,
