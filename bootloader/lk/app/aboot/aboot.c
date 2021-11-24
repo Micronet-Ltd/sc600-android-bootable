@@ -5362,6 +5362,7 @@ void aboot_init(const struct app_descriptor *app)
 #endif
 
 normal_boot:
+    regulator_enable(REG_LDO2 | REG_LDO22 | REG_LDO23 | REG_LDO10 | REG_LDO17); //kyle:add for Pin test ldo 20170701
 	if (!boot_into_fastboot)
 	{
 		if (target_is_emmc_boot())
